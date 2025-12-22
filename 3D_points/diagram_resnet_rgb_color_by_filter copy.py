@@ -1,0 +1,152 @@
+import sys
+sys.path.append('../')
+from utils.utils import *
+
+import numpy as np
+from scipy import ndimage
+
+from skimage.filters import sobel_h
+from skimage.filters import sobel_v
+from scipy import stats
+
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+from mpl_toolkits.mplot3d.proj3d import proj_transform
+from matplotlib.patches import FancyArrowPatch
+from mpl_toolkits.mplot3d import proj3d
+import mpl_toolkits.mplot3d as mp3d
+
+from tensorflow.python.client import device_lib
+
+import tensorflow as tf
+from tensorflow.keras.preprocessing import image
+from tensorflow.keras.applications.vgg16 import decode_predictions
+from tensorflow.keras.applications import VGG16, ResNet50
+
+from tensorflow.nn import depthwise_conv2d
+from tensorflow.math import multiply, reduce_sum, reduce_mean,reduce_euclidean_norm, sin, cos, abs, reduce_variance
+from tensorflow import stack, concat, expand_dims
+
+import tensorflow_probability as tfp
+import scienceplots
+from mayavi  import mlab 
+
+plt.style.use(['science', 'ieee'])
+plt.rcParams.update({'figure.dpi': '300'})
+
+model = ResNet50(weights='imagenet',
+				  include_top=False,
+				  input_shape=(224, 224, 3))
+
+conv_layers = []
+for l in model.layers:
+	if 'conv2d' in str(type(l)).lower():
+		if l.kernel_size == (7, 7) or l.kernel_size == (3,3):
+			conv_layers.append(l)
+
+filters, _ = conv_layers[0].get_weights()
+filters = filters #/ np.sqrt(reduce_variance(filters, axis=None))
+theta = getSobelTF(filters)
+print(filters.shape)
+s, a = getSymAntiSymTF(filters)
+a_mag = reduce_euclidean_norm(a, axis=[0,1])
+s_mag = reduce_euclidean_norm(s, axis=[0,1])
+
+mag = reduce_euclidean_norm(filters, axis=[0,1])
+fig =  mlab.figure(size=(600, 643), bgcolor=(0.8980392156862745, 0.8980392156862745, 0.8980392156862745), fgcolor=(0, 0, 0))
+
+mlab.clf()
+
+
+_, dom_theta = getDominantAngle(filters)
+
+print("Dominant angles (degrees): ", dom_theta*180/np.pi)
+dom_theta = (dom_theta + np.pi) / (2*np.pi)
+print("Dominant angles (degrees): ", dom_theta*180/np.pi)
+
+for F in range(filters.shape[-1]):
+	x =(a_mag[:,F]*np.cos((theta[:,F]))).numpy()*5   #times 30 for random, times 5 for imagenet
+	y =( a_mag[:,F]*np.sin((theta[:,F]))).numpy()*5
+	z =(s_mag[:,F]*np.sign(np.mean(s, axis=(0,1)))[:,F]).numpy()*5
+
+
+
+
+
+	mlab.points3d(x[0], y[0], z[0], np.ones(z[0].shape),  color=tuple(plt.cm.hsv(dom_theta)[F][:3]), scale_factor=0.5)
+	mlab.points3d(x[1], y[1], z[1], np.ones(z[0].shape),  color=tuple(plt.cm.hsv(dom_theta)[F][:3]), scale_factor=0.5)
+	mlab.points3d(x[2], y[2], z[2], np.ones(z[0].shape),  color=tuple(plt.cm.hsv(dom_theta)[F][:3]), scale_factor=0.5)
+
+mlab.plot3d(np.linspace(-10, 10, 100, endpoint=True), np.zeros(100), np.zeros(100), np.ones(100), color=(0,0,0), tube_radius=0.05)
+mlab.plot3d( np.zeros(100), np.linspace(-10, 10, 100, endpoint=True),np.zeros(100), np.ones(100), color=(0,0,0), tube_radius=0.05)
+mlab.plot3d(np.zeros(100), np.zeros(100),np.linspace(-10, 10, 100, endpoint=True),  np.ones(100), color=(0,0,0), tube_radius=0.05)
+
+xx, yy = np.mgrid[-10.:10.01:0.01, -10.:10.01:0.1]
+mlab.surf(xx, yy, np.zeros_like(xx), opacity=0.25, color=(0,0,1)) 
+# --- keep your mayavi code as-is up to the end, but replace mlab.show() with save+overlay ---
+
+out_raw   = "mayavi_raw.png"
+out_final = "mayavi_latex_axes.png"
+
+# 1) save the mayavi render (no UI needed)
+mlab.savefig(out_raw, figure=fig, size=(600, 643))
+# optional: close mayavi window if you're running non-interactively
+# mlab.close(fig)
+
+# 2) overlay LaTeX labels with matplotlib
+import matplotlib.pyplot as plt
+import matplotlib.image as mpimg
+
+# If you have a full LaTeX install, enable usetex. If not, comment it out;
+# Matplotlib mathtext still renders most things inside $...$ fine.
+# plt.rcParams["text.usetex"] = True
+plt.rcParams["mathtext.fontset"] = "cm"   # Computer Modern-ish without full TeX
+plt.rcParams["font.family"] = "serif"
+
+im = mpimg.imread(out_raw)
+
+fig2 = plt.figure(figsize=(6, 6.43), dpi=300)
+ax = fig2.add_axes([0, 0, 1, 1])
+ax.imshow(im)
+ax.set_axis_off()
+
+# ---- labels (positions are in axes-fraction coords: (0,0)=bottom-left, (1,1)=top-right)
+
+# z-axis label (top center)
+ax.text(
+    0.52, 0.965, r"$\Vert f_s\Vert$",
+    transform=ax.transAxes,
+    ha="center", va="top",
+    fontsize=22
+)
+
+# bottom title
+ax.text(
+    0.50, 0.025, "Antisymmetric Plane",
+    transform=ax.transAxes,
+    ha="center", va="bottom",
+    fontsize=18
+)
+
+# left diagonal axis label (tweak pos/rotation to match your camera)
+ax.text(
+    0.08, 0.235, r"$r_z=\Vert f_a\Vert\cdot\nabla_y$",
+    transform=ax.transAxes,
+    ha="left", va="center",
+    rotation=305,  # <-- tweak
+    fontsize=18
+)
+
+# right diagonal axis label (tweak pos/rotation to match your camera)
+ax.text(
+    0.72, 0.205, r"$r_x=\Vert f_a\Vert\cdot\nabla_x$",
+    transform=ax.transAxes,
+    ha="left", va="center",
+    rotation=35,   # <-- tweak
+    fontsize=18
+)
+
+fig2.savefig(out_final, dpi=300, transparent=False)
+plt.close(fig2)
+
+print("Wrote:", out_final)

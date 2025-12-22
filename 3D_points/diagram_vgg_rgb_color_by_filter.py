@@ -34,7 +34,7 @@ from mayavi  import mlab
 plt.style.use(['science', 'ieee'])
 plt.rcParams.update({'figure.dpi': '300'})
 
-model = ResNet50(weights='imagenet',
+model = VGG16(weights='imagenet',
                   include_top=False,
                   input_shape=(224, 224, 3))
 
@@ -57,16 +57,45 @@ fig =  mlab.figure(size=(600, 643), bgcolor=(0.8980392156862745, 0.8980392156862
 
 mlab.clf()
 
+
+_, dom_theta = getDominantAngle(filters)
+
+
+
+
+print("Dominant angles (degrees): ", dom_theta*180/np.pi)
+dom_theta = (dom_theta + np.pi) / (2*np.pi)
+print("Dominant angles (degrees): ", dom_theta*180/np.pi)
+
+
+n_filters = filters.shape[-1]
+
+order = np.argsort(dom_theta)  # sort by angle
+#base_colors = plt.cm.tab20c(np.linspace(0, 1, n_filters, endpoint=False))[:, :3]
+
+c20  = plt.cm.tab20(np.linspace(0, 1, 22))[:, :3]
+c20b = plt.cm.tab20b(np.linspace(0, 1, 22))[:, :3]
+c20c = plt.cm.tab20c(np.linspace(0, 1, 22))[:, :3]
+
+base_colors = np.vstack([c20, c20b, c20c])[:n_filters]
+
+colors = np.zeros_like(base_colors)
+colors[order] = base_colors   # smallest angle gets hue ~0, etc.
+
+
 for F in range(filters.shape[-1]):
-    x =(a_mag[:,F]*np.cos((theta[:,F]))).numpy()*5
-    y =( a_mag[:,F]*np.sin((theta[:,F]))).numpy()*5
-    z =(s_mag[:,F]*np.sign(np.mean(s, axis=(0,1)))[:,F]).numpy()*5
+	x =(a_mag[:,F]*np.cos((theta[:,F]))).numpy()*9   #times 30 for random , *9 for vgg
+	y =( a_mag[:,F]*np.sin((theta[:,F]))).numpy()*9
+	z =(s_mag[:,F]*np.sign(np.mean(s, axis=(0,1)))[:,F]).numpy()*9
 
 
 
-    mlab.points3d(x[0], y[0], z[0], np.ones(z[0].shape), color=(1.,0.,0.), scale_factor=0.5)
-    mlab.points3d(x[1], y[1], z[1], np.ones(z[0].shape), color=(0.,1.,0.), scale_factor=0.5)
-    mlab.points3d(x[2], y[2], z[2], np.ones(z[0].shape), color=(0.,0.,1.), scale_factor=0.5)
+
+
+	mlab.points3d(x[0], y[0], z[0], np.ones(z[0].shape),  color=tuple(plt.cm.hsv(dom_theta)[F][:3]), scale_factor=0.5)
+	mlab.points3d(x[1], y[1], z[1], np.ones(z[0].shape),  color=tuple(plt.cm.hsv(dom_theta)[F][:3]), scale_factor=0.5)
+	mlab.points3d(x[2], y[2], z[2], np.ones(z[0].shape),  color=tuple(plt.cm.hsv(dom_theta)[F][:3]), scale_factor=0.5)
+
 
 mlab.plot3d(np.linspace(-10, 10, 100, endpoint=True), np.zeros(100), np.zeros(100), np.ones(100), color=(0,0,0), tube_radius=0.05)
 mlab.plot3d( np.zeros(100), np.linspace(-10, 10, 100, endpoint=True),np.zeros(100), np.ones(100), color=(0,0,0), tube_radius=0.05)
