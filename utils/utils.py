@@ -90,7 +90,7 @@ def getDominantAngle(filters):
 		u_y = np.mean(y)
 		cov = np.cov([x, y])
 		e_val, e_vec = np.linalg.eigh(cov)
-		print(e_val, e_vec)
+		#print(e_val, e_vec)
 		e_vec = e_vec[:, np.argmax(e_val)]
 		e_val = np.max(e_val)
 
